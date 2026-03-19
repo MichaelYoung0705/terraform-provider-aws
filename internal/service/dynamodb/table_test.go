@@ -1934,6 +1934,7 @@ func TestAccDynamoDBTable_basic(t *testing.T) {
 					resource.TestCheckNoResourceAttr(resourceName, "range_key"),
 					resource.TestCheckResourceAttr(resourceName, "read_capacity", "1"),
 					resource.TestCheckResourceAttr(resourceName, "replica.#", "0"),
+					resource.TestCheckNoResourceAttr(resourceName, "restore_backup_arn"),
 					resource.TestCheckNoResourceAttr(resourceName, "restore_date_time"),
 					resource.TestCheckNoResourceAttr(resourceName, "restore_source_name"),
 					resource.TestCheckNoResourceAttr(resourceName, "restore_to_latest_time"),
@@ -12880,6 +12881,47 @@ resource "aws_dynamodb_table" "test_restore" {
   }
 }
 `, rName))
+}
+
+func testAccTableConfig_restoreBackupARN(rName string) string {
+	return fmt.Sprintf(`
+resource "aws_dynamodb_table" "source" {
+  name           = "%[1]s-source"
+  read_capacity  = 2
+  write_capacity = 2
+  hash_key       = "TestTableHashKey"
+
+  attribute {
+    name = "TestTableHashKey"
+    type = "S"
+  }
+}
+
+action "aws_dynamodb_create_backup" "example" {
+  config {
+    table_name = aws_dynamodb_table.example.name
+		backup_name = "%[1]s-backup"
+  }
+}
+
+resource "terraform_data" "backup_trigger" {
+  input = "trigger-backup"
+
+  lifecycle {
+    action_trigger {
+      events  = [after_create]
+      actions = [action.aws_dynamodb_create_backup.example]
+    }
+  }
+}
+
+resource "aws_dynamodb_table" "test" {
+  name               = "%[1]s-target"
+  restore_backup_arn = aws_dynamodb_table.source.name
+
+  depends_on = [action.aws_dynamodb_create_backup.example]
+}
+`, rName)
 }
 
 func testAccTableConfig_replica2_NoMultipleRegionProvider(rName string) string {
